@@ -15,7 +15,7 @@ from pipelines.builds import LOCAL_BUILD_PLATFORM
 from pipelines.builds.python_connectors import BuildConnectorImage
 from pipelines.contexts import ConnectorContext
 from pipelines.helpers.steps import run_steps
-from pipelines.tests.common import AcceptanceTests, PytestStep
+from pipelines.tests.common import AcceptanceTests, CheckBaseImageIsUsed, PytestStep
 from pipelines.utils import export_container_to_tarball
 
 
@@ -146,6 +146,7 @@ async def run_all_tests(context: ConnectorContext) -> List[StepResult]:
         tasks = [
             task_group.soonify(IntegrationTests(context).run)(connector_container),
             task_group.soonify(AcceptanceTests(context).run)(connector_image_tar_file),
+            task_group.soonify(CheckBaseImageIsUsed(context).run)(),
         ]
 
     return step_results + [task.value for task in tasks]
