@@ -5,7 +5,7 @@ import textwrap
 from typing import List, Optional
 
 import yaml
-from base_images import python
+from base_images.registries import PYTHON_REGISTRY
 from connector_ops.utils import ConnectorLanguage
 from dagger import Container
 from jinja2 import Template
@@ -17,7 +17,7 @@ from pipelines.contexts import ConnectorContext
 
 class UpgradeBaseImageMetadata(MetadataUpdateStep):
     title = "Upgrade the base image to the latest version in metadata.yaml"
-    latest_python_version = python.VERSION_REGISTRY.latest_version.name_with_tag
+    latest_python_version = PYTHON_REGISTRY.latest_not_pre_released_address
     # latest_java_version = java.VERSION_REGISTRY.latest_version
 
     def __init__(
