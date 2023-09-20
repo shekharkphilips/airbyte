@@ -105,21 +105,26 @@ class PytestStep(Step, ABC):
         secret_mounting_function = await environments.mounted_connector_secrets(self.context, "secrets")
         connector_dir = await self.context.get_connector_dir()
         connector_dir_entries = await connector_dir.entries()
-
+        # TODO: find a better way to detect if the connector uses poetry
+        uses_poetry = self.PYPROJECT_FILE_NAME in connector_dir_entries
         if self.PYTEST_INI_FILE_NAME in connector_dir_entries:
             config_file_name = self.PYTEST_INI_FILE_NAME
-            test_config = await self.context.get_connector_dir(include=[self.PYTEST_INI_FILE_NAME]).file(self.PYTEST_INI_FILE_NAME)
+            test_config = (await self.context.get_connector_dir(include=[self.PYTEST_INI_FILE_NAME])).file(self.PYTEST_INI_FILE_NAME)
             self.logger.info(f"Found {self.PYTEST_INI_FILE_NAME}, using it for testing.")
         elif self.PYPROJECT_FILE_NAME in connector_dir_entries:
             config_file_name = self.PYPROJECT_FILE_NAME
-            test_config = await self.context.get_connector_dir(include=[self.PYTEST_INI_FILE_NAME]).file(self.PYTEST_INI_FILE_NAME)
+            test_config = (await self.context.get_connector_dir(include=[self.PYPROJECT_FILE_NAME])).file(self.PYPROJECT_FILE_NAME)
             self.logger.info(f"Found {self.PYPROJECT_FILE_NAME} at connector level, using it for testing.")
         else:
             config_file_name = f"global_{self.PYPROJECT_FILE_NAME}"
-            test_config = await self.context.get_repo_dir(include=[self.PYPROJECT_FILE_NAME]).file(self.PYPROJECT_FILE_NAME)
+            test_config = (await self.context.get_repo_dir(include=[self.PYPROJECT_FILE_NAME])).file(self.PYPROJECT_FILE_NAME)
             self.logger.info(f"Found {self.PYPROJECT_FILE_NAME} at repo level, using it for testing.")
 
         def prepare_for_testing(built_connector_container: Container) -> Container:
+            if uses_poetry:
+                install_test_dependency_command = ["poetry", "install", "--all-extras"]
+            else:
+                install_test_dependency_command = ["pip", "install", f".[{','.join(extra_dependencies_names)}]"]
             return (
                 built_connector_container
                 # Reset the entrypoint
@@ -134,7 +139,7 @@ class PytestStep(Step, ABC):
                 # Mount the secrets
                 .with_(secret_mounting_function)
                 # Install the extra dependencies
-                .with_exec(["pip", "install", f".[{','.join(extra_dependencies_names)}]"], skip_entrypoint=True)
+                .with_exec(install_test_dependency_command, skip_entrypoint=True)
                 # Execute pytest on the test directory
                 .with_exec(
                     [
