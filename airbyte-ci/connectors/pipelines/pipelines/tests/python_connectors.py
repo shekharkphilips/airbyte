@@ -122,9 +122,11 @@ class PytestStep(Step, ABC):
 
         def prepare_for_testing(built_connector_container: Container) -> Container:
             if uses_poetry:
-                install_test_dependency_command = ["poetry", "install", "--all-extras"]
+                install_test_dependency_command = ["poetry", "install", "--with=dev"]
+                pytest_command = ["poetry", "run", "pytest", "-s", self.test_directory_name, "-c", config_file_name]
             else:
                 install_test_dependency_command = ["pip", "install", f".[{','.join(extra_dependencies_names)}]"]
+                pytest_command = ["pytest", "-s", self.test_directory_name, "-c", config_file_name]
             return (
                 built_connector_container
                 # Reset the entrypoint
@@ -141,17 +143,7 @@ class PytestStep(Step, ABC):
                 # Install the extra dependencies
                 .with_exec(install_test_dependency_command, skip_entrypoint=True)
                 # Execute pytest on the test directory
-                .with_exec(
-                    [
-                        "python",
-                        "-m",
-                        "pytest",
-                        "-s",
-                        self.test_directory_name,
-                        "-c",
-                        config_file_name,
-                    ]
-                )
+                .with_exec(pytest_command, skip_entrypoint=True)
             )
 
         return prepare_for_testing

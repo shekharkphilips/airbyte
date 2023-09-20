@@ -898,7 +898,7 @@ async def mounted_connector_secrets(context: PipelineContext, secret_directory_p
             contents[secret_file_name] = await secret.plaintext()
 
         def with_secrets_mounted_as_regular_files(container: Container) -> Container:
-            container = container.with_exec(["mkdir", secret_directory_path], skip_entrypoint=True)
+            container = container.with_exec(["mkdir", "-p", secret_directory_path], skip_entrypoint=True)
             for secret_file_name, secret_content_str in contents.items():
                 container = container.with_new_file(f"{secret_directory_path}/{secret_file_name}", secret_content_str, permissions=0o600)
             return container
@@ -906,7 +906,7 @@ async def mounted_connector_secrets(context: PipelineContext, secret_directory_p
         return with_secrets_mounted_as_regular_files
 
     def with_secrets_mounted_as_dagger_secrets(container: Container) -> Container:
-        container = container.with_exec(["mkdir", secret_directory_path], skip_entrypoint=True)
+        container = container.with_exec(["mkdir", "-p", secret_directory_path], skip_entrypoint=True)
         for secret_file_name, secret in context.connector_secrets.items():
             container = container.with_mounted_secret(f"{secret_directory_path}/{secret_file_name}", secret)
         return container
