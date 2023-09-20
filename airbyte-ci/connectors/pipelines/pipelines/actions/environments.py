@@ -28,7 +28,7 @@ from pipelines.consts import (
     LICENSE_SHORT_FILE_PATH,
     PYPROJECT_TOML_FILE_PATH,
 )
-from pipelines.utils import check_path_in_workdir, get_file_contents, sh_dash_c
+from pipelines.utils import get_file_contents, sh_dash_c
 
 if TYPE_CHECKING:
     from pipelines.contexts import ConnectorContext, PipelineContext
@@ -305,82 +305,6 @@ async def find_local_dependencies_in_pyproject_toml(
     return local_dependency_paths
 
 
-def _install_python_dependencies_from_setup_py(
-    container: Container,
-    additional_dependency_groups: Optional[List] = None,
-) -> Container:
-    install_connector_package_cmd = ["python", "-m", "pip", "install", "."]
-    container = container.with_exec(install_connector_package_cmd)
-
-    if additional_dependency_groups:
-        # e.g. .[dev,tests]
-        group_string = f".[{','.join(additional_dependency_groups)}]"
-        group_install_cmd = ["python", "-m", "pip", "install", group_string]
-
-        container = container.with_exec(group_install_cmd)
-
-    return container
-
-
-def _install_python_dependencies_from_requirements_txt(container: Container) -> Container:
-    install_requirements_cmd = ["python", "-m", "pip", "install", "-r", "requirements.txt"]
-    return container.with_exec(install_requirements_cmd)
-
-
-def _install_python_dependencies_from_poetry(
-    container: Container,
-    additional_dependency_groups: Optional[List] = None,
-) -> Container:
-    pip_install_poetry_cmd = ["python", "-m", "pip", "install", "poetry"]
-    poetry_disable_virtual_env_cmd = ["poetry", "config", "virtualenvs.create", "false"]
-    poetry_install_no_venv_cmd = ["poetry", "install", "--no-root"]
-    if additional_dependency_groups:
-        for group in additional_dependency_groups:
-            poetry_install_no_venv_cmd += ["--with", group]
-
-    return container.with_exec(pip_install_poetry_cmd).with_exec(poetry_disable_virtual_env_cmd).with_exec(poetry_install_no_venv_cmd)
-
-
-async def with_installed_python_package(
-    context: PipelineContext,
-    python_environment: Container,
-    package_source_code_path: str,
-    additional_dependency_groups: Optional[List] = None,
-    exclude: Optional[List] = None,
-) -> Container:
-    """Install a python package in a python environment container.
-
-    Args:
-        context (PipelineContext): The current test context, providing the repository directory from which the python sources will be pulled.
-        python_environment (Container): An existing python environment in which the package will be installed.
-        package_source_code_path (str): The local path to the package source code.
-        additional_dependency_groups (Optional[List]): extra_requires dependency of setup.py to install. Defaults to None.
-        exclude (Optional[List]): A list of file or directory to exclude from the python package source code.
-
-    Returns:
-        Container: A python environment container with the python package installed.
-    """
-    container = with_python_package(context, python_environment, package_source_code_path, exclude=exclude)
-
-    local_dependencies = await find_local_python_dependencies(context, package_source_code_path)
-
-    for dependency_directory in local_dependencies:
-        container = container.with_mounted_directory("/" + dependency_directory, context.get_repo_dir(dependency_directory))
-
-    has_setup_py = await check_path_in_workdir(container, "setup.py")
-    has_requirements_txt = await check_path_in_workdir(container, "requirements.txt")
-    has_pyproject_toml = await check_path_in_workdir(container, "pyproject.toml")
-
-    if has_pyproject_toml:
-        container = _install_python_dependencies_from_poetry(container)
-    elif has_setup_py:
-        container = _install_python_dependencies_from_setup_py(container, additional_dependency_groups)
-    elif has_requirements_txt:
-        container = _install_python_dependencies_from_requirements_txt(container)
-
-    return container
-
-
 def with_python_connector_source(context: ConnectorContext) -> Container:
     """Load an airbyte connector source code in a testing environment.
 
@@ -412,40 +336,6 @@ async def apply_python_development_overrides(context: ConnectorContext, connecto
         )
 
     return connector_container
-
-
-async def with_python_connector_installed(context: ConnectorContext) -> Container:
-    """Install an airbyte connector python package in a testing environment.
-
-    Args:
-        context (ConnectorContext): The current test context, providing the repository directory from which the connector sources will be pulled.
-    Returns:
-        Container: A python environment container (with the connector installed).
-    """
-    connector_source_path = str(context.connector.code_directory)
-    testing_environment: Container = with_testing_dependencies(context)
-    exclude = [
-        f"{context.connector.code_directory}/{item}"
-        for item in [
-            "secrets",
-            "metadata.yaml",
-            "bootstrap.md",
-            "icon.svg",
-            "README.md",
-            "Dockerfile",
-            "acceptance-test-docker.sh",
-            "build.gradle",
-            ".hypothesis",
-            ".dockerignore",
-        ]
-    ]
-    container = await with_installed_python_package(
-        context, testing_environment, connector_source_path, additional_dependency_groups=["dev", "tests", "main"], exclude=exclude
-    )
-
-    container = await apply_python_development_overrides(context, container)
-
-    return container
 
 
 async def with_ci_credentials(context: PipelineContext, gsm_secret: Secret) -> Container:
@@ -907,19 +797,6 @@ async def with_airbyte_java_connector(context: ConnectorContext, connector_java_
         .with_entrypoint(entrypoint)
     )
     return await finalize_build(context, connector_container)
-
-
-async def get_cdk_version_from_python_connector(python_connector: Container) -> Optional[str]:
-    pip_freeze_stdout = await python_connector.with_entrypoint("pip").with_exec(["freeze"]).stdout()
-    cdk_dependency_line = next((line for line in pip_freeze_stdout.split("\n") if "airbyte-cdk" in line), None)
-    if not cdk_dependency_line:
-        return None
-
-    if "file://" in cdk_dependency_line:
-        return "LOCAL"
-
-    _, cdk_version = cdk_dependency_line.split("==")
-    return cdk_version
 
 
 async def finalize_build(context: ConnectorContext, connector_container: Container) -> Container:
