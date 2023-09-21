@@ -404,6 +404,7 @@ This command runs the Python tests for a airbyte-ci poetry package.
 ## Changelog
 | Version | PR                                                        | Description                                                                                               |
 |---------| --------------------------------------------------------- |-----------------------------------------------------------------------------------------------------------|
+| 1.6.0   | [#30474](https://github.com/airbytehq/airbyte/pull/30474) | Test connector insider their containers.                                                                    |
 | 1.5.0   | [#30456](https://github.com/airbytehq/airbyte/pull/30456) | Start building Python connectors using our base images.                                                                    |
 | 1.4.1   | [#30595](https://github.com/airbytehq/airbyte/pull/30595) | Load base migration guide into QA Test container for strict 
 encrypt variants                              |
